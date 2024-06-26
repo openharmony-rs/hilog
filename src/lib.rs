@@ -13,6 +13,9 @@
 //! [`env_filter`]: https://docs.rs/env_filter/latest/env_filter/
 //!
 
+#[cfg(feature = "direct-logging")]
+mod base;
+
 mod hilog_writer;
 
 use arc_swap::ArcSwap;
@@ -311,6 +314,22 @@ impl Log for Logger {
             });
         self.fill_tag_bytes(&mut tag_bytes, tag);
         let tag: &CStr = unsafe { CStr::from_ptr(tag_bytes.as_ptr().cast()) };
+
+        let c_msg = CString::from_vec_with_nul(clamped_message).unwrap_or_default();
+        #[cfg(feature = "direct-logging")]
+        {
+            let res = base::send_message(LogType::LOG_APP, record.level().into(), tag, c_msg.as_ref());
+            if let Err(e) = res {
+                let error_msg = format!("Failed to send log message due to: {e:?}\0");
+                let c_msg = CString::from_vec_with_nul(error_msg.into_bytes()).unwrap_or_default();
+                hilog_log(LogType::LOG_APP, LogLevel::LOG_ERROR, self.domain,
+                          c"hilog-rust",  c_msg.as_ref());
+            } else {
+                hilog_log(hilog_sys::LogType::LOG_APP, record.level().into(), self.domain, c"HILOG_RS_DBG", c"Send message returned without error code!")
+
+            }
+            return
+        }
 
         let mut writer =
             HiLogWriter::new(LogType::LOG_APP, record.level().into(), self.domain, tag);
