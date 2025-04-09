@@ -1,10 +1,17 @@
 //! `log` compatible logger to the `HiLog` logging system on OpenHarmony
 //!
-//! This crate is in its very early stages and still under development.
-//! It's partially based on [`env_logger`], in particular the filtering
-//! is compatible with [`env_logger`].
+//! This crate is in its very early stages and still under development,
+//! it was partially inspired by [`env_logger`].
+//! 
+//! ## Features
+//! - Permits filtering based on the [`env_filter`] spec via the crate.
+//! - Permits dynamic replacement of filters in an atomic manner, making changes
+//!  immediately available to subsequent invocations on other threads without
+//!  invalidating the state of any running threads.
 //!
 //! [`env_logger`]: https://docs.rs/env_logger/latest/env_logger/
+//! [`env_filter`]: https://docs.rs/env_filter/latest/env_filter/
+//! 
 
 mod hilog_writer;
 
