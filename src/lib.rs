@@ -237,7 +237,7 @@ impl Logger {
     }
 
     pub fn set_filter(&self, filter: Filter) {
-        self.filter.store(filter);
+        self.filter.store(filter.into());
     }
 
     fn is_loggable(&self, tag: &CStr, level: LogLevel) -> bool {
