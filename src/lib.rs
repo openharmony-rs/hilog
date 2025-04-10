@@ -6,7 +6,7 @@
 //! ## Features
 //! - Permits filtering based on the [`env_filter`] spec via the crate.
 //! - Permits dynamic replacement of filters in an atomic manner, making changes
-//!  immediately available to subsequent invocations on other threads without
+//!  available to subsequent invocations on other threads without
 //!  invalidating the state of any running threads.
 //!
 //! [`env_logger`]: https://docs.rs/env_logger/latest/env_logger/
