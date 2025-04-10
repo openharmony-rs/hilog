@@ -1,19 +1,29 @@
 //! `log` compatible logger to the `HiLog` logging system on OpenHarmony
 //!
-//! This crate is in its very early stages and still under development.
-//! It's partially based on [`env_logger`], in particular the filtering
-//! is compatible with [`env_logger`].
+//! This crate is in its very early stages and still under development,
+//! it was partially inspired by [`env_logger`].
+//! 
+//! ## Features
+//! - Permits filtering based on the [`env_filter`] spec via the crate.
+//! - Permits dynamic replacement of filters in an atomic manner, making changes
+//!  available to subsequent invocations on other threads without
+//!  invalidating the state of any running threads.
 //!
 //! [`env_logger`]: https://docs.rs/env_logger/latest/env_logger/
+//! [`env_filter`]: https://docs.rs/env_filter/latest/env_filter/
+//! 
 
 mod hilog_writer;
 
+use arc_swap::ArcSwap;
+use env_filter::Filter;
 use hilog_sys::{LogLevel, LogType, OH_LOG_IsLoggable};
 use log::{LevelFilter, Log, Metadata, Record, SetLoggerError};
 use std::ffi::CStr;
 use std::fmt;
 use std::fmt::Write;
 use std::mem::MaybeUninit;
+use std::sync::Arc;
 
 pub(crate) type FormatFn = Box<dyn Fn(&mut dyn fmt::Write, &Record) -> fmt::Result + Sync + Send>;
 
@@ -199,7 +209,7 @@ impl Builder {
         Logger {
             domain: self.log_domain,
             tag: self.log_tag.take(),
-            filter: self.filter.build(),
+            filter: ArcSwap::from_pointee(self.filter.build()),
             custom_format: self.custom_format.take(),
         }
     }
@@ -208,7 +218,7 @@ impl Builder {
 pub struct Logger {
     domain: LogDomain,
     tag: Option<String>,
-    filter: env_filter::Filter,
+    filter: ArcSwap<Filter>,
     custom_format: Option<FormatFn>,
 }
 
@@ -223,7 +233,11 @@ impl Logger {
     /// Returns the maximum `LevelFilter` that this env logger instance is
     /// configured to output.
     pub fn filter(&self) -> LevelFilter {
-        self.filter.filter()
+        self.filter.load().filter()
+    }
+
+    pub fn set_filter(&self, filter: Filter) {
+        self.filter.store(filter.into());
     }
 
     fn is_loggable(&self, tag: &CStr, level: LogLevel) -> bool {
@@ -250,7 +264,7 @@ impl Logger {
 
 impl Log for Logger {
     fn enabled(&self, metadata: &Metadata) -> bool {
-        self.filter.enabled(metadata)
+        self.filter.load().enabled(metadata)
     }
 
     fn log(&self, record: &Record) {
