@@ -2,7 +2,7 @@
 //!
 //! This crate is in its very early stages and still under development,
 //! it was partially inspired by [`env_logger`].
-//! 
+//!
 //! ## Features
 //! - Permits filtering based on the [`env_filter`] spec via the crate.
 //! - Permits dynamic replacement of filters in an atomic manner, making changes
@@ -11,7 +11,7 @@
 //!
 //! [`env_logger`]: https://docs.rs/env_logger/latest/env_logger/
 //! [`env_filter`]: https://docs.rs/env_filter/latest/env_filter/
-//! 
+//!
 
 mod hilog_writer;
 
@@ -22,8 +22,13 @@ use log::{LevelFilter, Log, Metadata, Record, SetLoggerError};
 use std::ffi::CStr;
 use std::fmt;
 use std::fmt::Write;
+use std::fs::File;
+use std::io::BufWriter;
+use std::io::Write as OtherWrite;
 use std::mem::MaybeUninit;
-use std::sync::Arc;
+use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
+use std::sync::Mutex;
 
 pub(crate) type FormatFn = Box<dyn Fn(&mut dyn fmt::Write, &Record) -> fmt::Result + Sync + Send>;
 
@@ -211,6 +216,8 @@ impl Builder {
             tag: self.log_tag.take(),
             filter: ArcSwap::from_pointee(self.filter.build()),
             custom_format: self.custom_format.take(),
+            file_writer_enabled: AtomicBool::new(false),
+            file_writer: Mutex::new(None),
         }
     }
 }
@@ -220,6 +227,8 @@ pub struct Logger {
     tag: Option<String>,
     filter: ArcSwap<Filter>,
     custom_format: Option<FormatFn>,
+    file_writer_enabled: AtomicBool,
+    file_writer: Mutex<Option<BufWriter<File>>>,
 }
 
 use hilog_writer::HiLogWriter;
@@ -238,6 +247,19 @@ impl Logger {
 
     pub fn set_filter(&self, filter: Filter) {
         self.filter.store(filter.into());
+    }
+
+    /// Sets a file for which the log messages will also be written to.
+    ///
+    /// The format of the log messages will be similar to env_logger but skipping the time stamp.
+    /// This will use the same set of filters as given by set_filter.
+    pub fn set_file_writer(&self, path: PathBuf) -> std::io::Result<()> {
+        let f = std::fs::File::create(path)?;
+        let b = BufWriter::new(f);
+        *self.file_writer.lock().unwrap() = Some(b);
+        self.file_writer_enabled
+            .store(true, std::sync::atomic::Ordering::Release);
+        Ok(())
     }
 
     fn is_loggable(&self, tag: &CStr, level: LogLevel) -> bool {
@@ -296,7 +318,32 @@ impl Log for Logger {
         };
 
         writer.flush();
+
+        if self
+            .file_writer_enabled
+            .load(std::sync::atomic::Ordering::Relaxed)
+        {
+            if let Some(ref mut writer) = *self.file_writer.lock().unwrap() {
+                let _ = writeln!(
+                    writer,
+                    "[{} {}] {}",
+                    record.level(),
+                    record.module_path().unwrap_or(""),
+                    record.args()
+                );
+            }
+        }
     }
 
-    fn flush(&self) {}
+    fn flush(&self) {
+        let mut error_occured = false;
+        if let Some(ref mut writer) = *self.file_writer.lock().unwrap() {
+            if writer.flush().is_err() {
+                error_occured = true;
+            }
+        }
+        if error_occured {
+            *self.file_writer.lock().unwrap() = None;
+        }
+    }
 }
