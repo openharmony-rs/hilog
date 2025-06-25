@@ -250,6 +250,7 @@ impl Logger {
     }
 
     /// Sets a file for which the log messages will also be written to.
+    ///
     /// The format of the log messages will be similar to env_logger but skipping the time stamp.
     /// This will use the same set of filters as given by set_filter.
     pub fn set_file_writer(&self, path: PathBuf) -> std::io::Result<()> {
@@ -320,7 +321,7 @@ impl Log for Logger {
 
         if self
             .file_writer_enabled
-            .load(std::sync::atomic::Ordering::Acquire)
+            .load(std::sync::atomic::Ordering::Relaxed)
         {
             if let Some(ref mut writer) = *self.file_writer.lock().unwrap() {
                 let _ = writeln!(
