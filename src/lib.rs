@@ -20,7 +20,7 @@ use env_filter::Filter;
 use hilog_sys::{LogLevel, LogType, OH_LOG_IsLoggable};
 use log::{LevelFilter, Log, Metadata, Record, SetLoggerError};
 use std::ffi::CStr;
-use std::fmt;
+use std::{fmt, fs};
 use std::fmt::Write;
 use std::fs::File;
 use std::io::BufWriter;
@@ -254,7 +254,9 @@ impl Logger {
     /// The format of the log messages will be similar to env_logger but skipping the time stamp.
     /// This will use the same set of filters as given by set_filter.
     pub fn set_file_writer(&self, path: PathBuf) -> std::io::Result<()> {
-        let f = std::fs::File::create(path)?;
+        let mut open_options = fs::OpenOptions::new();
+        open_options.append(true).create(true);
+        let f = open_options.open(path)?;
         let b = BufWriter::new(f);
         *self.file_writer.lock().unwrap() = Some(b);
         self.file_writer_enabled
