@@ -328,7 +328,7 @@ impl Log for Logger {
                     writer,
                     "[{} {}] {}",
                     record.level(),
-                    record.module_path().unwrap_or(""),
+                    record.target(),
                     record.args()
                 );
             }
