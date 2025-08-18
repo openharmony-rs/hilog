@@ -20,7 +20,6 @@ use env_filter::Filter;
 use hilog_sys::{LogLevel, LogType, OH_LOG_IsLoggable};
 use log::{LevelFilter, Log, Metadata, Record, SetLoggerError};
 use std::ffi::CStr;
-use std::{fmt, fs};
 use std::fmt::Write;
 use std::fs::File;
 use std::io::BufWriter;
@@ -29,6 +28,7 @@ use std::mem::MaybeUninit;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::Mutex;
+use std::{fmt, fs};
 
 pub(crate) type FormatFn = Box<dyn Fn(&mut dyn fmt::Write, &Record) -> fmt::Result + Sync + Send>;
 
@@ -218,6 +218,7 @@ impl Builder {
             custom_format: self.custom_format.take(),
             file_writer_enabled: AtomicBool::new(false),
             file_writer: Mutex::new(None),
+            file_module_writer: Mutex::new(None),
         }
     }
 }
@@ -229,6 +230,7 @@ pub struct Logger {
     custom_format: Option<FormatFn>,
     file_writer_enabled: AtomicBool,
     file_writer: Mutex<Option<BufWriter<File>>>,
+    file_module_writer: Mutex<Option<(BufWriter<File>, String)>>,
 }
 
 use hilog_writer::HiLogWriter;
@@ -261,6 +263,19 @@ impl Logger {
         *self.file_writer.lock().unwrap() = Some(b);
         self.file_writer_enabled
             .store(true, std::sync::atomic::Ordering::Release);
+        Ok(())
+    }
+
+    /// Sets a file for which log messages of this module will be written to.
+    /// There can only be one split writer.
+    pub fn set_file_split_writer(&self, path: PathBuf, module: &str) -> std::io::Result<()> {
+        let mut open_options = fs::OpenOptions::new();
+        open_options.append(true).create(true);
+        let f = open_options.open(path)?;
+        let b = BufWriter::new(f);
+        *self.file_module_writer.lock().unwrap() = Some((b, String::from(module)));
+        self.file_writer_enabled
+            .store(true, std::sync::atomic::Ordering::Relaxed);
         Ok(())
     }
 
@@ -325,6 +340,22 @@ impl Log for Logger {
             .file_writer_enabled
             .load(std::sync::atomic::Ordering::Relaxed)
         {
+            if let Some((ref mut writer, ref module)) = *self.file_module_writer.lock().unwrap() {
+                if record
+                    .module_path()
+                    .map(|module_path| module_path == module)
+                    .unwrap_or(false)
+                {
+                    let _ = writeln!(
+                        writer,
+                        "[{} {}] {}",
+                        record.level(),
+                        record.target(),
+                        record.args()
+                    );
+                }
+            }
+
             if let Some(ref mut writer) = *self.file_writer.lock().unwrap() {
                 let _ = writeln!(
                     writer,
