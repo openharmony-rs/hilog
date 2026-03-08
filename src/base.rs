@@ -2,7 +2,6 @@
 //!
 //! Directly sends logs to `hilogd` to improve performance
 
-
 use hilog_sys::hilog_base::{HilogMsg, TagLen, HILOG_SOCKET_PATH, MAX_TAG_LEN, MessageMetaField, MAX_LOG_LEN};
 use crate::{LogLevel, LogType};
 use nix::errno::Errno;
@@ -19,6 +18,7 @@ use std::os::fd::{AsFd, AsRawFd};
 use nix::errno::Errno::EINTR;
 
 #[derive(Debug)]
+#[allow(unused)]
 pub(crate) enum LogError {
     CreateSocketFailed(Errno),
     ConnectFailed(Errno),
@@ -98,7 +98,7 @@ pub(crate) fn send_message(
         pid: getpid().as_raw() as u32,
         tid: gettid().as_raw() as u32,
         // todo: expose
-        domain: 0,
+        domain: 0xE0C3,
     };
 
     let io_vec = [

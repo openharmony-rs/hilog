@@ -22,7 +22,7 @@ use arc_swap::ArcSwap;
 use env_filter::Filter;
 use hilog_sys::{LogLevel, LogType, OH_LOG_IsLoggable};
 use log::{LevelFilter, Log, Metadata, Record, SetLoggerError};
-use std::ffi::CStr;
+use std::ffi::{CStr, CString};
 use std::{fmt, fs};
 use std::fmt::Write;
 use std::fs::File;
@@ -315,18 +315,19 @@ impl Log for Logger {
         self.fill_tag_bytes(&mut tag_bytes, tag);
         let tag: &CStr = unsafe { CStr::from_ptr(tag_bytes.as_ptr().cast()) };
 
+        // todo: clamp
+        let clamped_message = format!("{}\0",record.args()).into_bytes();
         let c_msg = CString::from_vec_with_nul(clamped_message).unwrap_or_default();
         #[cfg(feature = "direct-logging")]
         {
             let res = base::send_message(LogType::LOG_APP, record.level().into(), tag, c_msg.as_ref());
             if let Err(e) = res {
-                let error_msg = format!("Failed to send log message due to: {e:?}\0");
+                let error_msg = format!("reason: {e:?}\0");
                 let c_msg = CString::from_vec_with_nul(error_msg.into_bytes()).unwrap_or_default();
-                hilog_log(LogType::LOG_APP, LogLevel::LOG_ERROR, self.domain,
-                          c"hilog-rust",  c_msg.as_ref());
+                unsafe { hilog_sys::OH_LOG_Print(LogType::LOG_APP, LogLevel::LOG_ERROR, self.domain.0 as _, c"hilog-rust".as_ptr(), c"Error: Failed to do custom print %{public}s".as_ptr(), c_msg.as_ptr()) };
+                panic!("Failed to log!");
             } else {
-                hilog_log(hilog_sys::LogType::LOG_APP, record.level().into(), self.domain, c"HILOG_RS_DBG", c"Send message returned without error code!")
-
+                // hilog_log(hilog_sys::LogType::LOG_APP, record.level().into(), self.domain, c"HILOG_RS_DBG", c"Send message returned without error code!")
             }
             return
         }

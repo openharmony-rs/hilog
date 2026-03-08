@@ -10,14 +10,16 @@ repository = "https://github.com/openharmony-rs/hilog"
 
 [dependencies]
 # hilog-sys = {  version = "0.1.1", features = ["log"] }
-hilog-sys = {  git = "https://github.com/jschwe/hilog-sys", features = ["log"], branch = "jschwender/fast_logging" }
+hilog-sys = {  git = "https://github.com/jschwe/hilog-sys", features = ["log", "hilog-base"], branch = "jschwender/fast_logging" }
 env_filter = "0.1.0"
 log = "0.4.21"
 arc-swap = "1.7.1"
-nix = { features = ["socket", "process", "uio", "time"], optional = true}
+nix = { version = "0.30.1", features = ["socket", "process", "uio", "time"], optional = true}
 
+[build-dependencies]
+cc = "1.2"
 
 [features]
 default = ["direct-logging"]
-direct-logging = ["dep:nix", "hilog-sys/hilog-base"]
+direct-logging = ["dep:nix"]
 
