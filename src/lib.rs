@@ -315,19 +315,37 @@ impl Log for Logger {
         self.fill_tag_bytes(&mut tag_bytes, tag);
         let tag: &CStr = unsafe { CStr::from_ptr(tag_bytes.as_ptr().cast()) };
 
+        #[cfg(feature = "direct-logging")]
+        if !self.is_loggable(tag, record.level().into()) {
+            return;
+        }
+
         // todo: clamp
         let clamped_message = format!("{}\0",record.args()).into_bytes();
         let c_msg = CString::from_vec_with_nul(clamped_message).unwrap_or_default();
         #[cfg(feature = "direct-logging")]
         {
-            let res = base::send_message(LogType::LOG_APP, record.level().into(), tag, c_msg.as_ref());
+            let res = base::send_message(
+                LogType::LOG_APP,
+                record.level().into(),
+                self.domain.0 as u32,
+                tag,
+                c_msg.as_ref(),
+            );
             if let Err(e) = res {
                 let error_msg = format!("reason: {e:?}\0");
-                let c_msg = CString::from_vec_with_nul(error_msg.into_bytes()).unwrap_or_default();
-                unsafe { hilog_sys::OH_LOG_Print(LogType::LOG_APP, LogLevel::LOG_ERROR, self.domain.0 as _, c"hilog-rust".as_ptr(), c"Error: Failed to do custom print %{public}s".as_ptr(), c_msg.as_ptr()) };
-                panic!("Failed to log!");
-            } else {
-                // hilog_log(hilog_sys::LogType::LOG_APP, record.level().into(), self.domain, c"HILOG_RS_DBG", c"Send message returned without error code!")
+                let c_error = CString::from_vec_with_nul(error_msg.into_bytes()).unwrap_or_default();
+                unsafe { hilog_sys::OH_LOG_Print(LogType::LOG_APP, LogLevel::LOG_ERROR, self.domain.0 as _, c"hilog-rust".as_ptr(), c"Error: Failed to do custom print %{public}s".as_ptr(), c_error.as_ptr()) };
+                let _ = unsafe {
+                    hilog_sys::OH_LOG_Print(
+                        LogType::LOG_APP,
+                        record.level().into(),
+                        self.domain.0 as _,
+                        tag.as_ptr(),
+                        c"%{public}s".as_ptr(),
+                        c_msg.as_ptr(),
+                    )
+                };
             }
             return
         }

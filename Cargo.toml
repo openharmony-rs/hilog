@@ -16,10 +16,6 @@ log = "0.4.21"
 arc-swap = "1.7.1"
 nix = { version = "0.30.1", features = ["socket", "process", "uio", "time"], optional = true}
 
-[build-dependencies]
-cc = "1.2"
-
 [features]
 default = ["direct-logging"]
 direct-logging = ["dep:nix"]
-
