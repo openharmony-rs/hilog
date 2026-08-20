@@ -8,19 +8,23 @@
 //! - Permits dynamic replacement of filters in an atomic manner, making changes
 //!  available to subsequent invocations on other threads without
 //!  invalidating the state of any running threads.
+//! - Provides [`HiLogSink`], an [`std::io::Write`] adapter so `write!` can log
+//!   to HiLog at WARN or ERROR (for code that would otherwise write to `stderr`).
 //!
 //! [`env_logger`]: https://docs.rs/env_logger/latest/env_logger/
 //! [`env_filter`]: https://docs.rs/env_filter/latest/env_filter/
 //!
 
+mod hilog_sink;
 mod hilog_writer;
+
+pub use hilog_sink::HiLogSink;
 
 use arc_swap::ArcSwap;
 use env_filter::Filter;
 use hilog_sys::{LogLevel, LogType, OH_LOG_IsLoggable};
 use log::{LevelFilter, Log, Metadata, Record, SetLoggerError};
 use std::ffi::CStr;
-use std::{fmt, fs};
 use std::fmt::Write;
 use std::fs::File;
 use std::io::BufWriter;
@@ -29,6 +33,7 @@ use std::mem::MaybeUninit;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::Mutex;
+use std::{fmt, fs};
 
 pub(crate) type FormatFn = Box<dyn Fn(&mut dyn fmt::Write, &Record) -> fmt::Result + Sync + Send>;
 
