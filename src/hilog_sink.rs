@@ -238,7 +238,8 @@ mod tests {
     #[test]
     fn write_macro_emits_error_line() {
         let (mut sink, captured) = capture_pair(LogLevel::LOG_ERROR, LogDomain::new(0), "ErrTag");
-        writeln!(sink, "operation failed: {}", "disk full").unwrap();
+        let detail = "disk full";
+        writeln!(sink, "operation failed: {}", detail).unwrap();
 
         let logs = captured.borrow();
         assert_eq!(logs.len(), 1);
@@ -251,7 +252,8 @@ mod tests {
         let (mut sink, captured) = capture_pair(LogLevel::LOG_WARN, LogDomain::new(0), "T");
         write!(sink, "hel").unwrap();
         write!(sink, "lo ").unwrap();
-        writeln!(sink, "{}", "world").unwrap();
+        let name = "world";
+        writeln!(sink, "{}", name).unwrap();
 
         let logs = captured.borrow();
         assert_eq!(logs.len(), 1);
