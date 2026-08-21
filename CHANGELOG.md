@@ -14,6 +14,7 @@
 - Use `OH_LOG_PrintMsg` internally when the `api-18` feature is enabled.
 - `OH_LOG_SetCallback` is not wrapped: it is an unsafe C function-pointer API
   with no additional safe surface beyond the raw `hilog-sys` binding.
+- Host `cargo test` links against a stub `libhilog_ndk.z` (non-`ohos` only).
 
 ## v0.2.2
 

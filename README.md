@@ -26,6 +26,9 @@ symbols; enabling `api-19` exposes the API-15/API-18 wrappers.
 `LogType` and `LogLevel` are re-exported from `hilog-sys`. `OH_LOG_SetCallback`
 is left unwrapped; use `hilog-sys` directly if you need the raw C callback.
 
+Host `cargo test` links a stub `libhilog_ndk.z` (non-`ohos` targets only). The
+real NDK library is used when `target_env = "ohos"`.
+
 ```toml
 [dependencies]
 hilog = { version = "0.2.3", features = ["api-19"] }

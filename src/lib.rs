@@ -6,8 +6,8 @@
 //! ## Features
 //! - Permits filtering based on the [`env_filter`] spec via the crate.
 //! - Permits dynamic replacement of filters in an atomic manner, making changes
-//!  available to subsequent invocations on other threads without
-//!  invalidating the state of any running threads.
+//!   available to subsequent invocations on other threads without
+//!   invalidating the state of any running threads.
 //! - Safe wrappers for newer HiLog NDK functions (`is_loggable`,
 //!   `set_min_log_level`, `print_msg`, `print_msg_by_len`, `set_log_level`),
 //!   gated behind `api-*` features that match [`hilog-sys`].

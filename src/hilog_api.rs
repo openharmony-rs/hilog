@@ -170,4 +170,64 @@ mod tests {
             PreferStrategy::PREFER_OPEN_LOG
         );
     }
+
+    #[test]
+    fn is_loggable_links_on_host() {
+        let tag = c"hilog-test";
+        assert!(is_loggable(LogDomain::new(0), tag, LogLevel::LOG_INFO));
+    }
+
+    #[cfg(feature = "api-15")]
+    #[test]
+    fn set_min_log_level_links_on_host() {
+        set_min_log_level(LogLevel::LOG_WARN);
+    }
+
+    #[cfg(feature = "api-18")]
+    #[test]
+    fn print_msg_links_on_host() {
+        use hilog_sys::LogType;
+        let tag = c"hilog-test";
+        let msg = c"hello";
+        assert!(
+            print_msg(
+                LogType::LOG_APP,
+                LogLevel::LOG_INFO,
+                LogDomain::new(0),
+                tag,
+                msg
+            ) >= 0
+        );
+    }
+
+    #[cfg(feature = "api-18")]
+    #[test]
+    fn print_msg_by_len_links_on_host() {
+        use hilog_sys::LogType;
+        assert!(
+            print_msg_by_len(
+                LogType::LOG_APP,
+                LogLevel::LOG_INFO,
+                LogDomain::new(0),
+                "tag",
+                "hello",
+            ) >= 0
+        );
+        assert!(
+            print_msg_by_len(
+                LogType::LOG_APP,
+                LogLevel::LOG_INFO,
+                LogDomain::new(0),
+                "",
+                "",
+            ) >= 0
+        );
+    }
+
+    #[cfg(feature = "api-21")]
+    #[test]
+    fn set_log_level_links_on_host() {
+        use hilog_sys::PreferStrategy;
+        set_log_level(LogLevel::LOG_INFO, PreferStrategy::PREFER_CLOSE_LOG);
+    }
 }
