@@ -6,21 +6,36 @@
 //! ## Features
 //! - Permits filtering based on the [`env_filter`] spec via the crate.
 //! - Permits dynamic replacement of filters in an atomic manner, making changes
-//!  available to subsequent invocations on other threads without
-//!  invalidating the state of any running threads.
+//!   available to subsequent invocations on other threads without
+//!   invalidating the state of any running threads.
+//! - Safe wrappers for newer HiLog NDK functions (`is_loggable`,
+//!   `set_min_log_level`, `print_msg`, `print_msg_by_len`, `set_log_level`),
+//!   gated behind `api-*` features that match [`hilog-sys`].
 //!
 //! [`env_logger`]: https://docs.rs/env_logger/latest/env_logger/
 //! [`env_filter`]: https://docs.rs/env_filter/latest/env_filter/
+//! [`hilog-sys`]: https://docs.rs/hilog-sys
 //!
+#![cfg_attr(docsrs, feature(doc_cfg))]
 
+mod hilog_api;
 mod hilog_writer;
 
 use arc_swap::ArcSwap;
 use env_filter::Filter;
-use hilog_sys::{LogLevel, LogType, OH_LOG_IsLoggable};
 use log::{LevelFilter, Log, Metadata, Record, SetLoggerError};
+
+pub use hilog_api::is_loggable;
+#[cfg(feature = "api-21")]
+pub use hilog_api::set_log_level;
+#[cfg(feature = "api-15")]
+pub use hilog_api::set_min_log_level;
+#[cfg(feature = "api-18")]
+pub use hilog_api::{print_msg, print_msg_by_len};
+#[cfg(feature = "api-21")]
+pub use hilog_sys::PreferStrategy;
+pub use hilog_sys::{LogLevel, LogType};
 use std::ffi::CStr;
-use std::{fmt, fs};
 use std::fmt::Write;
 use std::fs::File;
 use std::io::BufWriter;
@@ -29,6 +44,7 @@ use std::mem::MaybeUninit;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::Mutex;
+use std::{fmt, fs};
 
 pub(crate) type FormatFn = Box<dyn Fn(&mut dyn fmt::Write, &Record) -> fmt::Result + Sync + Send>;
 
@@ -264,10 +280,6 @@ impl Logger {
         Ok(())
     }
 
-    fn is_loggable(&self, tag: &CStr, level: LogLevel) -> bool {
-        unsafe { OH_LOG_IsLoggable(self.domain.0.into(), tag.as_ptr(), level) }
-    }
-
     fn fill_tag_bytes(&self, tag_bytes: &mut [MaybeUninit<u8>], tag: &[u8]) {
         if tag.len() > MAX_TAG_LEN {
             for (input, output) in tag
@@ -347,5 +359,44 @@ impl Log for Logger {
         if error_occured {
             *self.file_writer.lock().unwrap() = None;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::hilog_writer::MAX_TAG_LEN;
+    use log::LevelFilter;
+    use std::ffi::CStr;
+    use std::mem::MaybeUninit;
+
+    #[test]
+    fn builder_filter_level() {
+        let mut builder = Builder::new();
+        builder.filter_level(LevelFilter::Info);
+        let logger = builder.build();
+        assert_eq!(logger.filter(), LevelFilter::Info);
+    }
+
+    #[test]
+    fn builder_set_domain_and_tag() {
+        let mut builder = Builder::new();
+        builder.set_domain(LogDomain::new(0x00AB));
+        builder.set_tag("MyApp");
+        let logger = builder.build();
+        assert_eq!(logger.domain, LogDomain::new(0x00AB));
+        assert_eq!(logger.tag.as_deref(), Some("MyApp"));
+    }
+
+    #[test]
+    fn fill_tag_bytes_truncates_long_tags() {
+        let logger = Builder::new().build();
+        let mut tag_bytes: [MaybeUninit<u8>; MAX_TAG_LEN + 1] = uninit_array();
+        let long = [b'x'; 64];
+        logger.fill_tag_bytes(&mut tag_bytes, &long);
+        let tag: &CStr = unsafe { CStr::from_ptr(tag_bytes.as_ptr().cast()) };
+        let bytes = tag.to_bytes();
+        assert!(bytes.len() <= MAX_TAG_LEN);
+        assert!(bytes.ends_with(b".."));
     }
 }

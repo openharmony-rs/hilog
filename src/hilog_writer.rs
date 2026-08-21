@@ -1,5 +1,5 @@
 use crate::{uninit_array, LogDomain};
-use hilog_sys::{LogLevel, LogType, OH_LOG_Print};
+use hilog_sys::{LogLevel, LogType};
 use std::ffi::CStr;
 use std::mem::MaybeUninit;
 use std::{fmt, mem, ptr};
@@ -11,16 +11,23 @@ pub const MAX_LOG_LEN: usize = 4096 - 1;
 pub const MAX_TAG_LEN: usize = 32 - 1;
 
 fn hilog_log(log_type: LogType, level: LogLevel, domain: LogDomain, tag: &CStr, msg: &CStr) {
-    let _res = unsafe {
-        OH_LOG_Print(
-            log_type,
-            level,
-            domain.0.into(),
-            tag.as_ptr(),
-            c"%{public}s".as_ptr(),
-            msg.as_ptr(),
-        )
-    };
+    #[cfg(feature = "api-18")]
+    {
+        let _res = crate::print_msg(log_type, level, domain, tag, msg);
+    }
+    #[cfg(not(feature = "api-18"))]
+    {
+        let _res = unsafe {
+            hilog_sys::OH_LOG_Print(
+                log_type,
+                level,
+                domain.0.into(),
+                tag.as_ptr(),
+                c"%{public}s".as_ptr(),
+                msg.as_ptr(),
+            )
+        };
+    }
 }
 
 pub struct HiLogWriter<'a> {
