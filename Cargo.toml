@@ -1,6 +1,6 @@
 [package]
 name = "hilog"
-version = "0.2.2"
+version = "0.2.3"
 edition = "2021"
 rust-version = "1.78.0"
 license = "Apache-2.0"
@@ -9,7 +9,23 @@ readme = "README.md"
 repository = "https://github.com/openharmony-rs/hilog"
 
 [dependencies]
-hilog-sys = {  version = "0.1.1", features = ["log"] }
+hilog-sys = { version = "0.1.8", features = ["log"] }
 env_filter = "0.1.0"
 log = "0.4.21"
 arc-swap = "1.7.1"
+
+[features]
+# Enable `set_min_log_level` (`OH_LOG_SetMinLogLevel`, OpenHarmony API-15+).
+api-15 = ["hilog-sys/api-15"]
+# Enable `print_msg` / `print_msg_by_len` (`OH_LOG_PrintMsg*`, OpenHarmony API-18+).
+api-18 = ["api-15", "hilog-sys/api-18"]
+# Forwarded API-19 feature. HiLog gained no new symbols in API-19; this enables
+# the API-18 print wrappers and `set_min_log_level`.
+api-19 = ["api-18", "hilog-sys/api-19"]
+# Enable `set_log_level` (`OH_LOG_SetLogLevel`, OpenHarmony API-21+).
+api-21 = ["api-19", "hilog-sys/api-21"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+

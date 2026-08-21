@@ -29,7 +29,7 @@ dependencies = [
 
 [[package]]
 name = "hilog"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "arc-swap",
  "env_filter",
@@ -39,9 +39,9 @@ dependencies = [
 
 [[package]]
 name = "hilog-sys"
-version = "0.1.4"
+version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b570882b8450bb0c9edfc3e4bdd3bd298667d38cb15e5b5c67586a7fb78429a"
+checksum = "f715f263b6e73aa2322b59057134b4daf56a765cbebc2f6b35e640ffded3361b"
 dependencies = [
  "log",
 ]
