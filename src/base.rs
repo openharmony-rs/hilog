@@ -10,11 +10,12 @@ use nix::sys::time::TimeSpec;
 use nix::sys::uio::writev;
 use nix::time;
 use nix::time::ClockId;
-use nix::unistd::getpid;
+use nix::unistd::{close, getpid};
 use std::ffi::CStr;
 use std::io::IoSlice;
 use std::mem::size_of;
-use std::os::fd::{AsFd, AsRawFd};
+use std::os::fd::{AsRawFd, BorrowedFd, IntoRawFd, RawFd};
+use std::sync::atomic::{AtomicI32, Ordering};
 use nix::errno::Errno::EINTR;
 
 #[repr(C, packed)]
@@ -45,6 +46,9 @@ const TYPE_SHIFT: u16 = VERSION_SHIFT + VERSION_BITS;
 const LEVEL_SHIFT: u16 = TYPE_SHIFT + TYPE_BITS;
 const TAG_LEN_SHIFT: u16 = LEVEL_SHIFT + LEVEL_BITS;
 const VERSION: u16 = 0;
+const INVALID_FD: RawFd = -1;
+
+static SOCKET_FD: AtomicI32 = AtomicI32::new(INVALID_FD);
 
 fn raw_type(log_type: LogType) -> u16 {
     if log_type == LogType::LOG_APP {
@@ -89,36 +93,6 @@ pub(crate) fn send_message(
     tag: &CStr,
     message: &CStr,
 ) -> Result<(), LogError> {
-    let socket_flags = SockFlag::SOCK_NONBLOCK | SockFlag::SOCK_CLOEXEC;
-
-    let socket_fd = loop {
-        match socket(
-            AddressFamily::Unix,
-            SockType::Datagram,
-            socket_flags,
-            None,
-        ) {
-            Ok(fd) => break fd,
-            Err(errno) if errno == Errno::EINTR => continue,
-            Err(errno) => return Err(LogError::CreateSocketFailed(errno)),
-        }
-    };
-
-    // Comment from hilogbase code:
-    // > The hilogbase interface cannot has mutex, so need to re-open and connect to the socketof the hilogd
-    // > server each time you write logs. Although there is some overhead, you can only do this.
-    // I think we could also consider making a pool of sockets, and checking the performance.
-    loop {
-        match connect(
-            socket_fd.as_raw_fd(),
-            &UnixAddr::new(HILOG_SOCKET_PATH).unwrap(),
-        ) {
-            Ok(()) => break,
-            Err(errno) if errno == Errno::EINTR => continue,
-            Err(errno) => return Err(LogError::ConnectFailed(errno)),
-        }
-    }
-
     let ts = time::clock_gettime(ClockId::CLOCK_REALTIME).unwrap_or(TimeSpec::new(0, 0));
     let ts_mono = time::clock_gettime(ClockId::CLOCK_MONOTONIC).unwrap_or(TimeSpec::new(0, 0));
 
@@ -129,7 +103,6 @@ pub(crate) fn send_message(
     }
     if raw_message.len() > MAX_LOG_LEN {
         return Err(LogError::MessageTooLong(raw_message.len()))
-
     }
     let tag_len = raw_tag.len() as u16;
     if tag_len >= (1 << TAG_LEN_BITS) {
@@ -163,13 +136,84 @@ pub(crate) fn send_message(
         IoSlice::new(&raw_tag),
         IoSlice::new(&raw_message),
     ];
-    let socket = socket_fd.as_fd();
-    loop {
-        match writev(socket, &io_vec) {
+
+    let mut fd = get_or_init_socket_fd()?;
+    for _ in 0..2 {
+        let borrowed = unsafe { BorrowedFd::borrow_raw(fd) };
+        match writev(borrowed, &io_vec) {
             Ok(_written_bytes) => return Ok(()),
-            Err(errno) if errno == Errno::EAGAIN || errno == EINTR => continue,
+            Err(errno) if errno == EINTR => continue,
+            Err(errno) if should_reconnect(errno) => {
+                reset_global_socket(fd);
+                fd = get_or_init_socket_fd()?;
+            }
             Err(errno) => return Err(LogError::WritevFailed(errno)),
         }
     }
+    Err(LogError::WritevFailed(Errno::EIO))
+}
 
+fn should_reconnect(errno: Errno) -> bool {
+    matches!(errno, Errno::EBADF | Errno::ENOTCONN | Errno::ECONNREFUSED | Errno::EPIPE)
+}
+
+fn reset_global_socket(fd: RawFd) {
+    if SOCKET_FD
+        .compare_exchange(fd, INVALID_FD, Ordering::AcqRel, Ordering::Acquire)
+        .is_ok()
+    {
+        let _ = close(fd);
+    }
+}
+
+fn create_connected_socket() -> Result<RawFd, LogError> {
+    let socket_fd = loop {
+        match socket(
+            AddressFamily::Unix,
+            SockType::Datagram,
+            SockFlag::SOCK_NONBLOCK | SockFlag::SOCK_CLOEXEC,
+            None,
+        ) {
+            Ok(fd) => break fd,
+            Err(errno) if errno == Errno::EINTR => continue,
+            Err(errno) => return Err(LogError::CreateSocketFailed(errno)),
+        }
+    };
+
+    loop {
+        match connect(
+            socket_fd.as_raw_fd(),
+            &UnixAddr::new(HILOG_SOCKET_PATH).unwrap(),
+        ) {
+            Ok(()) => break,
+            Err(errno) if errno == Errno::EINTR => continue,
+            Err(errno) => return Err(LogError::ConnectFailed(errno)),
+        }
+    }
+    Ok(socket_fd.into_raw_fd())
+}
+
+fn get_or_init_socket_fd() -> Result<RawFd, LogError> {
+    let current = SOCKET_FD.load(Ordering::Acquire);
+    if current != INVALID_FD {
+        return Ok(current);
+    }
+
+    let new_fd = create_connected_socket()?;
+    match SOCKET_FD.compare_exchange(
+        INVALID_FD,
+        new_fd,
+        Ordering::AcqRel,
+        Ordering::Acquire,
+    ) {
+        Ok(_) => Ok(new_fd),
+        Err(existing) => {
+            let _ = close(new_fd);
+            if existing == INVALID_FD {
+                get_or_init_socket_fd()
+            } else {
+                Ok(existing)
+            }
+        }
+    }
 }

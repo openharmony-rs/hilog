@@ -336,16 +336,6 @@ impl Log for Logger {
                 let error_msg = format!("reason: {e:?}\0");
                 let c_error = CString::from_vec_with_nul(error_msg.into_bytes()).unwrap_or_default();
                 unsafe { hilog_sys::OH_LOG_Print(LogType::LOG_APP, LogLevel::LOG_ERROR, self.domain.0 as _, c"hilog-rust".as_ptr(), c"Error: Failed to do custom print %{public}s".as_ptr(), c_error.as_ptr()) };
-                let _ = unsafe {
-                    hilog_sys::OH_LOG_Print(
-                        LogType::LOG_APP,
-                        record.level().into(),
-                        self.domain.0 as _,
-                        tag.as_ptr(),
-                        c"%{public}s".as_ptr(),
-                        c_msg.as_ptr(),
-                    )
-                };
             }
             return
         }
